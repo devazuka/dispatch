@@ -93,25 +93,24 @@ async function* getNextRequest() {
 }
 
 
-if (!SCAN_INTERVAL) {
-	// In that simple case we only execute once
-	const pending = await Array.fromAsync(getNextRequest())
-	const results = await Promise.allSettled(pending.map(req => req.execution))
-	console.log(results)
-	Deno.exit(0)
-}
-
-const fulfilled = (value: unknown) => console.log('fulfilled', value)
-const rejected = (value: unknown) => console.log('rejected', value)
-const waitInterval = (s: (value: unknown) => void) => setTimeout(s, SCAN_INTERVAL)
-while (true) {
-	try {
-		for await (const { href, execution } of getNextRequest()) {
-			console.log(href, 'started')
-			execution?.then?.(fulfilled, rejected)
-		}
-	} catch (err) {
-		console.log(err)
-	}
-	await new Promise(waitInterval)
+if (SCAN_INTERVAL) {
+  const fulfilled = (value: unknown) => console.log('fulfilled', value)
+  const rejected = (value: unknown) => console.log('rejected', value)
+  const waitInterval = (s: (value: unknown) => void) => setTimeout(s, SCAN_INTERVAL)
+  while (true) {
+    try {
+      for await (const { href, execution } of getNextRequest()) {
+        console.log(href, 'started')
+        execution?.then?.(fulfilled, rejected)
+      }
+    } catch (err) {
+      console.log(err)
+    }
+    await new Promise(waitInterval)
+  }
+} else {
+  // In that simple case we only execute once
+  const pending = await Array.fromAsync(getNextRequest())
+  const results = await Promise.allSettled(pending.map(req => req.execution))
+  console.log(results)
 }
