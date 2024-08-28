@@ -12,7 +12,7 @@ const CLIENT_ID = Deno.env.get('CLIENT_ID')
 const DISPATCHER_URL = Deno.env.get('DISPATCHER_URL')
 const SCAN_INTERVAL = Number(Deno.env.get('SCAN_INTERVAL')) || 0
 const dispatcherUrl = new URL(
-  DISPATCHER_URL || 'https://dispatcher.devazuka.com',
+  DISPATCHER_URL || 'https://dispatch.devazuka.com',
 )
 const dispatcherInit = CLIENT_ID
   ? ({ headers: { 'x-client-id': CLIENT_ID } } as const)
@@ -113,24 +113,5 @@ while (true) {
 	} catch (err) {
 		console.log(err)
 	}
-	console.log('waiting for more...', { SCAN_INTERVAL })
 	await new Promise(waitInterval)
 }
-
-/*
-    if (!res.ok && res.status !== 500) {
-      if (res.status === 429 || res.status === 403 || res.err?.message === 'body failed') {
-        echo('retry', res.status)
-        echo(truncate(await res.text()))
-        return get(href, { skipCache, retry: retry + 1, withBody })
-      }
-      const err = Error(`${res.statusText}: ${res.status} - ${href}`)
-      err.status = res.status
-      err.response = res
-      err.body = await res.text()
-      throw err
-    }
-    const text = await res.text()
-    res.status !== 500 && (await Deno.writeTextFile(`.cache/${key}`, text))
-    return withBody ? { dom: getData(text), body: text } : getData(text)
-*/
