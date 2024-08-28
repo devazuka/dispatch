@@ -92,6 +92,11 @@ async function* getNextRequest() {
   }
 }
 
+const execAllAvailableRequests = async () => {
+  const pending = await Array.fromAsync(getNextRequest())
+  const results = await Promise.allSettled(pending.map(req => req.execution))
+  console.log(results)
+}
 
 if (SCAN_INTERVAL) {
   const fulfilled = (value: unknown) => console.log('fulfilled', value)
@@ -108,9 +113,12 @@ if (SCAN_INTERVAL) {
     }
     await new Promise(waitInterval)
   }
-} else {
-  // In that simple case we only execute once
-  const pending = await Array.fromAsync(getNextRequest())
-  const results = await Promise.allSettled(pending.map(req => req.execution))
-  console.log(results)
+}
+
+else if (Deno.cron) {
+  Deno.cron("Sample cron job", "*/1 * * * *", execAllAvailableRequests)
+}
+
+else {
+  await execAllAvailableRequests()
 }
