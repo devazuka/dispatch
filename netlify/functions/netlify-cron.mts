@@ -85,7 +85,10 @@ async function* getNextRequest(dispatcherUrl: URL | string, dispatcherInit?: Req
 }
 
 export default async () => {
-  const pending = await Array.fromAsync(getNextRequest('https://dispatch.devazuka.com'))
+  const pending = []
+  for await (const work of getNextRequest('https://dispatch.devazuka.com')) {
+    pending.push(work)
+  }
   const results = await Promise.allSettled(pending.map(req => req.execution))
   console.log(results)
 }
