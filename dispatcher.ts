@@ -187,26 +187,50 @@ type PostBody = {
   pathname: string
   search: string
   href: string
-  skipCache?: boolean
+  expire?: number
   headers?: Record<string, string>
   reply?: URL
+}
+
+const streamFileAndClose = (file: Deno.FsFile) => {
+  const reader = file.readable.getReader()
+  return new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read()
+      if (done) {
+        file.close()
+        controller.close()
+        return
+      }
+      controller.enqueue(value)
+    },
+    cancel() {
+      file.close()
+    },
+  })
 }
 
 const { NotFound } = Deno.errors
 const POST = async (
   queue: RequestQueue,
-  { pathname, search, href, skipCache, headers, reply }: PostBody,
+  { pathname, search, href, expire, headers, reply }: PostBody,
 ) => {
   const key = `${queue.name}/${await getKey(`${pathname}${search}`)}`
   const req = REQUESTS.get(key)
   if (req) return buildResponse(req, reply)
-  if (!skipCache) {
-    try {
-      const body = await Deno.readFile(key)
-      return new Response(body, { headers: { 'x-from-cache': key } })
-    } catch (err) {
-      if (!(err instanceof NotFound)) return fail(500, err)
+  try {
+    const file = await Deno.open(key, { read: true })
+    const { isFile, mtime, birthtime } = await file.stat()
+    if (!isFile) throw Error(`${key} is not a file`)
+    const headers = { 'x-from-cache': key }
+    if (!expire) return new Response(streamFileAndClose(file), { headers })
+    const cachedDate = mtime || birthtime
+    if (!cachedDate) throw Error('unable to access updated time')
+    if ((cachedDate.getTime() + expire) > Date.now()) {
+      return new Response(streamFileAndClose(file), { headers })
     }
+  } catch (err) {
+    if (!(err instanceof NotFound)) return fail(500, err)
   }
 
   console.log('enqueue:', { key })
@@ -355,7 +379,7 @@ const waitInterval = (s: (value: unknown) => void) => setTimeout(s, SCAN_INTERVA
 const clientInit = { headers: { 'x-client-id': 'localhost' } } as const
 const startDefaultFetcher = async () => {
   try {
-    for await (const { href, execution } of getNextRequest(`http://localhost:${PORT}`, clientInit)) {
+    for await (const { href, execution } of getNextRequest(`http://localhost:${PORT}/`, clientInit)) {
       console.log(href, 'started')
       execution?.then?.(fulfilled, rejected)
     }
@@ -375,12 +399,12 @@ if (EXAMPLES) {
   /*
    ** Queue a request:
    **
-   ** curl localhost:8786 -d '{"url":"https://goodreads.com/lol?w=6","skipCache":false,"headers":{}}'
+   ** curl localhost:8786 -d '{"url":"https://goodreads.com/lol?w=6","expire":60000,"headers":{}}'
    */
   await fetch('https://localhost:8786', {
     body: JSON.stringify({
       url: 'https://goodreads.com/lol?w=6',
-      skipCache: false,
+      expire: 60*1000, // 1 min
       headers: {},
       reply: 'https://valid.domain.tld/webhook', // optional, if missing will wait for the response
     }),
