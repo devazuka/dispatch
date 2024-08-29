@@ -1,5 +1,6 @@
 import { crypto } from 'jsr:@std/crypto'
 import { encodeBase58 } from 'jsr:@std/encoding/base58'
+import { getNextRequest } from './service.ts'
 
 const getKey = async (text: string) =>
   encodeBase58(
@@ -84,7 +85,7 @@ const cleanupLocalStorageTimers = () => {
 setInterval(cleanupLocalStorageTimers, 60 * 60 * 1000)
 cleanupLocalStorageTimers()
 
-const getNextRequest = (clientId: string) => {
+const getNextInQueue = (clientId: string) => {
   const timers = decodeTimers(localStorage[clientId])
   let oldest: undefined | PendingRequest
   let count = 0
@@ -306,7 +307,7 @@ const handleRequestNextInQueue = (request: Request) => {
   }
 
   // TODO: return delay from next request
-  const { next, count } = getNextRequest(client.id)
+  const { next, count } = getNextInQueue(client.id)
   if (!next) return EMPTY
   client.started++
   console.log('dispatching:', { key: next.key, client: client.id })
@@ -327,7 +328,7 @@ const handleRequestNextInQueue = (request: Request) => {
 
 // statuses: pending -> started -> (succeeded | failed)
 const EMPTY = new Response(null, { status: 204 })
-const httpHandler = async (request: Request) => {
+const httpHandler = (request: Request) => {
   const { method, url } = request
   const { pathname } = new URL(url)
   if (method === 'POST') {
@@ -346,7 +347,27 @@ const httpHandler = async (request: Request) => {
   return NOT_FOUND
 }
 
+const SCAN_INTERVAL = Number(Deno.env.get('SCAN_INTERVAL')) || 1000
+const PORT = Deno.env.get('PORT') || 8000
+const fulfilled = (value: unknown) => console.log('fulfilled', value)
+const rejected = (value: unknown) => console.log('rejected', value)
+const waitInterval = (s: (value: unknown) => void) => setTimeout(s, SCAN_INTERVAL)
+const clientInit = { headers: { 'x-client-id': 'localhost' } } as const
+const startDefaultFetcher = async () => {
+  try {
+    for await (const { href, execution } of getNextRequest(`http://localhost:${PORT}`, clientInit)) {
+      console.log(href, 'started')
+      execution?.then?.(fulfilled, rejected)
+    }
+  } catch (err) {
+    console.log(err)
+  }
+  await new Promise(waitInterval).finally(startDefaultFetcher)
+}
+
 export default { fetch: httpHandler }
+
+startDefaultFetcher()
 
 // USAGES:
 const EXAMPLES = 0 // is 0 not to be executed

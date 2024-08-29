@@ -8,16 +8,6 @@ type DispatchedRequest = {
   message?: string
 }
 
-const CLIENT_ID = Deno.env.get('CLIENT_ID')
-const DISPATCHER_URL = Deno.env.get('DISPATCHER_URL')
-const SCAN_INTERVAL = Number(Deno.env.get('SCAN_INTERVAL')) || 0
-const dispatcherUrl = new URL(
-  DISPATCHER_URL || 'https://dispatch.devazuka.com',
-)
-const dispatcherInit = CLIENT_ID
-  ? ({ headers: { 'x-client-id': CLIENT_ID } } as const)
-  : undefined
-
 const platforms = [
   'Macintosh; Intel Mac OS X 14_6_1',
   'Windows NT 10.0; Win64; x64',
@@ -43,7 +33,7 @@ const browsers = [
 
 const pick = (arr: unknown[]) => arr[Math.random() % arr.length]
 
-async function* getNextRequest() {
+export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherInit?: RequestInit) {
   while (true) {
     const dispatcherResponse = await fetch(dispatcherUrl, dispatcherInit)
     if (dispatcherResponse.status === 204) return
@@ -92,33 +82,8 @@ async function* getNextRequest() {
   }
 }
 
-const execAllAvailableRequests = async () => {
-  const pending = await Array.fromAsync(getNextRequest())
+export const execAllAvailableRequests = async () => {
+  const pending = await Array.fromAsync(getNextRequest('https://dispatch.devazuka.com'))
   const results = await Promise.allSettled(pending.map(req => req.execution))
   console.log(results)
-}
-
-if (SCAN_INTERVAL) {
-  const fulfilled = (value: unknown) => console.log('fulfilled', value)
-  const rejected = (value: unknown) => console.log('rejected', value)
-  const waitInterval = (s: (value: unknown) => void) => setTimeout(s, SCAN_INTERVAL)
-  while (true) {
-    try {
-      for await (const { href, execution } of getNextRequest()) {
-        console.log(href, 'started')
-        execution?.then?.(fulfilled, rejected)
-      }
-    } catch (err) {
-      console.log(err)
-    }
-    await new Promise(waitInterval)
-  }
-}
-
-else if (Deno.cron) {
-  Deno.cron("Sample cron job", "*/1 * * * *", execAllAvailableRequests)
-}
-
-else {
-  await execAllAvailableRequests()
 }
