@@ -215,6 +215,25 @@ const POST = async (
   )
 }
 
+type Client = { id: string, activeAt: number, started: number, finished: number }
+const CLIENTS: Record<string, Client> = {}
+const getClient = ({ headers }: Request): Client | undefined => {
+  const clientId =
+    headers.get('x-client-id') ||
+    headers.get('true-client-ip') ||
+    headers.get('cf-connecting-ip') ||
+    headers.get('x-forwared-for')
+  if (!clientId) return
+  const now = Date.now()
+  let client = CLIENTS[clientId]
+  if (client) {
+    client.activeAt = now
+  } else {
+    client = { id: clientId, activeAt: now, started: 0, finished: 0 }
+    CLIENTS[clientId] = client
+  }
+  return client
+}
 
 const handleRequestResponse = async (request: Request, key: string) => {
   // TODO: pass in the response headers & the status code
@@ -223,7 +242,10 @@ const handleRequestResponse = async (request: Request, key: string) => {
   if (!req) return NOT_FOUND
   const body = new Uint8Array(await request.arrayBuffer())
   const status = Number(request.headers.get('x-status'))
-  console.log('receiving:', { key, status })
+
+  const client = getClient(request)
+  client && (client.finished++)
+  console.log('receiving:', { key, status, client: client?.id })
   const writePending = status === 200 && Deno.writeFile(key, body)
   const pendingReplies = []
   for (const handler of req.handlers) {
@@ -272,25 +294,22 @@ const handleGetStatus = () => {
   for (const { queue, href, createdAt, startedAt } of REQUESTS.values()) {
     requests.push({ queue, href, createdAt, startedAt })
   }
-  const body = JSON.stringify({ timers, requests, startAt: dispatcheStartAt })
+  const clients = Object.values(CLIENTS)
+  const body = JSON.stringify({ clients, timers, requests, startAt: dispatcheStartAt })
   return new Response(body, { headers: { 'content-type': 'application/json' } })
 }
-
-const handleRequestNextInQueue = ({ headers }: Request) => {
-  const clientId =
-    headers.get('x-client-id') ||
-    headers.get('true-client-ip') ||
-    headers.get('cf-connecting-ip') ||
-    headers.get('x-forwared-for')
-
-  if (!clientId) {
+const handleRequestNextInQueue = (request: Request) => {
+  const client = getClient(request)
+  if (!client) {
     const message = 'expect the x-client-id header to be set'
     return fail(400, { message })
   }
+
   // TODO: return delay from next request
-  const { next, count } = getNextRequest(clientId)
+  const { next, count } = getNextRequest(client.id)
   if (!next) return EMPTY
-  console.log('dispatching:', { key: next.key, clientId })
+  client.started++
+  console.log('dispatching:', { key: next.key, client: client.id })
 
   // request was already started but timedout, so we retry it
   next.startedAt && next.attempts++
