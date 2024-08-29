@@ -67,7 +67,7 @@ export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherIni
         return fetch(`${dispatcherUrl}${key}`, {
           method: 'POST',
           body,
-          headers: { 'x-status': String(status) },
+          headers: { ...dispatcherInit?.headers, 'x-status': String(status) },
         }).then(() => ({ key, status }))
       } catch (err) {
       	console.log(err.stack)
