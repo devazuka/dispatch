@@ -192,24 +192,6 @@ type PostBody = {
   reply?: URL
 }
 
-const streamFileAndClose = (file: Deno.FsFile) => {
-  const reader = file.readable.getReader()
-  return new ReadableStream({
-    async pull(controller) {
-      const { done, value } = await reader.read()
-      if (done) {
-        file.close()
-        controller.close()
-        return
-      }
-      controller.enqueue(value)
-    },
-    cancel() {
-      file.close()
-    },
-  })
-}
-
 const { NotFound } = Deno.errors
 const POST = async (
   queue: RequestQueue,
@@ -219,15 +201,14 @@ const POST = async (
   const req = REQUESTS.get(key)
   if (req) return buildResponse(req, reply)
   try {
-    const file = await Deno.open(key, { read: true })
-    const { isFile, mtime, birthtime } = await file.stat()
+    const { isFile, mtime, birthtime } = await Deno.stat(key)
     if (!isFile) throw Error(`${key} is not a file`)
     const headers = { 'x-from-cache': key }
-    if (!expire) return new Response(streamFileAndClose(file), { headers })
+    if (!expire) return new Response(await Deno.readFile(key), { headers })
     const cachedDate = mtime || birthtime
     if (!cachedDate) throw Error('unable to access updated time')
     if ((cachedDate.getTime() + expire) > Date.now()) {
-      return new Response(streamFileAndClose(file), { headers })
+      return new Response(await Deno.readFile(key), { headers })
     }
   } catch (err) {
     if (!(err instanceof NotFound)) return fail(500, err)
