@@ -152,9 +152,9 @@ const fail = (
   })
 
 const buildResponse = ({ handlers, key }: PendingRequest, reply?: URL) => {
+  const headers = { 'x-request-key': key }
   if (reply) {
     handlers.add(reply)
-    const headers = { 'x-request-key': key }
     return new Response(null, { status: 202, headers })
   }
 
@@ -180,7 +180,7 @@ const buildResponse = ({ handlers, key }: PendingRequest, reply?: URL) => {
       handlers.size === 0 && REQUESTS.delete(key)
     },
   })
-  return new Response(stream)
+  return new Response(stream, { headers })
 }
 
 type PostBody = {
@@ -278,16 +278,22 @@ const handleRequestResponse = async (request: Request, key: string) => {
       handler(body)
       continue
     }
-    const pending = fetch(handler, {
-      body,
-      method: 'POST',
-      headers: {
-        'x-request-key': key,
-        'x-request-href': req.href,
-        'x-request-status': String(status),
-      },
-    })
-    pendingReplies.push(pending)
+    const sendReply = async (attempts = 0) => {
+      const res = await fetch(handler, {
+        body,
+        method: 'POST',
+        headers: {
+          'x-request-key': key,
+          'x-request-href': req.href,
+          'x-request-status': String(status),
+        },
+      })
+      if (res.status !== 500) return // only retry on server error, otherwise, move on
+      // wait a bit and retry until client is available
+      attempts && (await new Promise(s => setTimeout(s, attempts * 750)))
+      return sendReply(attempts + 1)
+    }
+    pendingReplies.push(sendReply(0))
   }
   REQUESTS.delete(key)
   await writePending

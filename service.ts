@@ -63,7 +63,6 @@ export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherIni
         const { status } = response
         if (status === 429 || status === 403) return execRequest(attempts + 1)
         const body = await response.arrayBuffer()
-      	await new Promise(s => setTimeout(s, 5000))
         return fetch(`${dispatcherUrl}${key}`, {
           method: 'POST',
           body,
