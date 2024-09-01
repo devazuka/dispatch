@@ -92,6 +92,8 @@ const getNextInQueue = (clientId: string) => {
   // TODO: add priority system a bit finer grained than FIFO
   const now = Date.now()
   for (const req of REQUESTS.values()) {
+    // blacklist localhost from 'theaudiobookbay.se' because it always timeout
+    if (req.queue === 'theaudiobookbay.se' && clientId === 'localhost') continue
     // only true if we have a startedAt and it hasn't timed out yet
     // then it means the request is being handled and we are still waiting
     if (now - (req.startedAt as number) < TIMEOUT) continue
@@ -260,17 +262,24 @@ const handleRequestResponse = async (request: Request, key: string) => {
       continue
     }
     const sendReply = async (attempts = 0) => {
-      const res = await fetch(handler, {
-        body,
-        method: 'POST',
-        headers: {
-          'x-request-key': key,
-          'x-request-href': req.href,
-          'x-request-status': String(status),
-        },
-      })
-      if (res.status !== 500) return // only retry on server error, otherwise, move on
-      // wait a bit and retry until client is available
+      console.log('replying to:', handler)
+      try {
+        const res = await fetch(handler, {
+          body,
+          method: 'POST',
+          headers: {
+            'x-request-key': key,
+            'x-request-href': req.href,
+            'x-request-status': String(status),
+          },
+        })
+        if (res.status !== 500) return // only retry on server error, otherwise, move on
+        // wait a bit and retry until client is available
+      } catch (err) {
+        console.log('failed to reply to:', { host: handler, attempts, key })
+        console.log(err.stack)
+        if (attempts > 10) return // give up after 10 attempts
+      }
       attempts && (await new Promise(s => setTimeout(s, attempts * 750)))
       return sendReply(attempts + 1)
     }

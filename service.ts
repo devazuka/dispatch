@@ -45,10 +45,10 @@ export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherIni
     const signal = AbortSignal.timeout(10000)
     const execRequest = async (attempts = 0) => {
       if (attempts > 0) {
-      	// Avoid loop spam, exponentially wait
+        // Avoid loop spam, exponentially wait
         await new Promise(resolve => {
           const timeout = setTimeout(resolve, attempts * 750)
-      		// Clear the timeout here, we don't want to hold the process
+          // Clear the timeout here, we don't want to hold the process
           signal.addEventListener('abort', () => clearTimeout(timeout))
         })
       }
@@ -69,7 +69,7 @@ export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherIni
           headers: { ...dispatcherInit?.headers, 'x-status': String(status) },
         }).then(() => ({ key, status }))
       } catch (err) {
-      	console.log(err.stack)
+        console.log(err.stack)
         if (signal.aborted) return { key, error: `aborted: ${signal.reason}` }
         if (!(err instanceof Error)) return { key, error: String(err) }
         if (err.message === 'body failed') return execRequest(attempts + 1)
