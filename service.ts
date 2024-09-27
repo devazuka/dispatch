@@ -61,7 +61,10 @@ export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherIni
           signal,
         })
         const { status } = response
-        if (status === 429 || status === 403) return execRequest(attempts + 1)
+        if (status === 429 || status === 403) {
+          if (attempts > 5) return { key, error: `Error ${status}` }
+          return execRequest(attempts + 1)
+        }
         const body = await response.arrayBuffer()
         return fetch(`${dispatcherUrl}${key}`, {
           method: 'POST',
@@ -69,10 +72,12 @@ export async function* getNextRequest(dispatcherUrl: URL | string, dispatcherIni
           headers: { ...dispatcherInit?.headers, 'x-status': String(status) },
         }).then(() => ({ key, status }))
       } catch (err) {
-        console.log(err.stack)
         if (signal.aborted) return { key, error: `aborted: ${signal.reason}` }
         if (!(err instanceof Error)) return { key, error: String(err) }
-        if (err.message === 'body failed') return execRequest(attempts + 1)
+        if (err.message === 'body failed') {
+          if (attempts > 5) return { key, error: err.message }
+          return execRequest(attempts + 1)
+        }
         return { key, error: err.message }
       }
     }
